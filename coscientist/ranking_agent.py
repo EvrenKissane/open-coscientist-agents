@@ -240,7 +240,6 @@ class EloTournament:
         """
         Runs the single-elimination bracket stage for the top k hypotheses.
         Uses SIMULATED_DEBATE_PROMPT for matches.
-        Does NOT update ELO ratings, only determines a winner.
 
         Parameters
         ----------
