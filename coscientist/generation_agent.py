@@ -21,6 +21,7 @@ class IndependentState(TypedDict):
     goal: str
     literature_review: str
     meta_review: str
+    research_overview: str
     hypothesis: ParsedHypothesis
     _raw_result: str  # Private temporary field for markdown output
 
@@ -104,8 +105,9 @@ def _independent_generation_node(
     Represents the action of a single generation agent using the independent_generation.md template.
     The output is expected to be markdown with sections: Evidence, Hypothesis, Reasoning, Assumptions Table.
     """
-    # Handle meta_review field with fallback
+    # Handle optional fields with fallbacks
     meta_review = state.get("meta_review", "Not Available")
+    research_overview = state.get("research_overview", "Not Available")
 
     prompt = load_prompt(
         "independent_generation",
@@ -113,6 +115,7 @@ def _independent_generation_node(
         field=field,
         literature_review=state["literature_review"],
         meta_review=meta_review,
+        research_overview=research_overview,
         reasoning_type=reasoning_type.value,
     )
     response_content = llm.invoke(prompt).content

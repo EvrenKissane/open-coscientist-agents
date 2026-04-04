@@ -76,6 +76,7 @@ class CoscientistState:
         self.tournament = None
         self.evolved_hypotheses = []
         self.meta_reviews = []
+        self.research_overview = ""
         self.proximity_graph = None
         self.reflection_queue = []
         self.supervisor_decisions = []
@@ -580,6 +581,18 @@ class CoscientistStateManager:
         )
 
     @_maybe_save(n=1)
+    def update_research_overview(self, research_overview_state: MetaReviewTournamentState) -> None:
+        """
+        Update the research overview from the top hypotheses review agent.
+
+        Parameters
+        ----------
+        research_overview_state : MetaReviewTournamentState
+            The final state from the top hypotheses review agent
+        """
+        self._state.research_overview = research_overview_state["result"]
+
+    @_maybe_save(n=1)
     def update_proximity_graph_edges(self) -> None:
         """
         Update the proximity graph state.
@@ -771,9 +784,11 @@ class CoscientistStateManager:
             "literature_review": literature_review_content,
         }
 
-        # Add meta_review if available
+        # Add meta_review and research_overview if available
         if self._state.meta_reviews:
             base_state["meta_review"] = self._state.meta_reviews[-1]["result"]
+        if self._state.research_overview:
+            base_state["research_overview"] = self._state.research_overview
 
         if mode == "independent":
             return IndependentState(**base_state)
@@ -817,7 +832,8 @@ class CoscientistStateManager:
         # Pop the first hypothesis from the queue
         hypothesis_to_review = self._state.reflection_queue.pop(0)
 
-        return ReflectionState(hypothesis_to_review=hypothesis_to_review)
+        meta_review = self._state.meta_reviews[-1]["result"] if self._state.meta_reviews else ""
+        return ReflectionState(hypothesis_to_review=hypothesis_to_review, meta_review=meta_review)
 
     def next_evolution_state(
         self,
@@ -940,6 +956,8 @@ class CoscientistStateManager:
             goal=self._state.goal,
             tournament=self._state.tournament,
             top_k=top_k,
+            result="",
+            research_contacts=[],
         )
 
     def next_final_report_state(self, top_k: int = 3) -> FinalReportState:

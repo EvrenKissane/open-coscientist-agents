@@ -10,3 +10,9 @@ Provide your reasoning for each of the three criteria. We these evaluations are 
 
 # Hypothesis to evaluate
 {{ hypothesis }}
+
+{% if meta_review %}
+# Meta-review (common issues from prior reviews)
+The following meta-review summarizes recurring critique points identified across previous hypothesis reviews. Use this to ensure you are not overlooking known issues:
+{{ meta_review }}
+{% endif %}

@@ -13,6 +13,10 @@ A strong hypothesis must be novel, robust, and falsifiable. It must also be spec
 A panel of reviewers may have put together a meta-analysis of previously proposed hypotheses, highlighting common strengths and weaknesses. When available, you can use this to inform your contributions:
 {{ meta_review }}
 
+# Research Overview (optional)
+A research overview summarizing the top-ranked hypotheses and suggested future research directions may be available below. Use this selectively to avoid overfitting to prior directions — it is meant to highlight gaps and open areas, not constrain novel thinking:
+{{ research_overview }}
+
 # Instructions
 1. State a hypothesis that addresses the research goal and criteria while staying grounded in evidence from literature and feedback from reviewers. Describe the hypothesis in detail, including specific entities, mechanisms, and anticipated outcomes.
 2. Make a list of self-contained falsifiable predictions that could be tested to disprove your hypothesis. Aim for at least 1 prediction and no more than 3. Each prediction must clearly state an entity to be tested, the conditions under which it will be tested, and an expected outcome. Another scientist will decide how to implement a test (e.g., clinical or in vitro) for each prediction. 
