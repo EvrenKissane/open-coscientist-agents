@@ -57,6 +57,8 @@ class ReflectionState(TypedDict):
         Dictionary of parsed assumptions and sub-assumptions (private)
     _assumption_research_results: dict[str, str]
         Research results for each assumption (private)
+    _assumption_impact_classification: str
+        Classification of fundamental or non-fundamental impact on hypothesis validity (private)
     reviewed_hypothesis: Optional[ReviewedHypothesis]
         The final reviewed hypothesis with all verification results
     """
@@ -69,6 +71,7 @@ class ReflectionState(TypedDict):
     _refined_assumptions: str
     _parsed_assumptions: dict[str, list[str]]
     _assumption_research_results: dict[str, str]
+    _assumption_impact_classification: str
     reviewed_hypothesis: Optional[ReviewedHypothesis]
 
 
@@ -240,6 +243,9 @@ def deep_verification_node(
         "_assumption_research_results" in state
     ), f"Missing '_assumption_research_results'. Available keys: {available_keys}"
     assert (
+        "_assumption_impact_classification" in state
+    ), f"Missing '_assumption_impact_classification'. Available keys: {available_keys}"
+    assert (
         "_causal_reasoning" in state
     ), f"Missing '_causal_reasoning'. Available keys: {available_keys}"
 
@@ -251,6 +257,7 @@ def deep_verification_node(
         hypothesis=state["hypothesis_to_review"].hypothesis,
         reasoning=state["_causal_reasoning"],
         assumption_research=assumption_research,
+        assumption_impact=state["_assumption_impact_classification"],
     )
     response = llm.invoke(prompt)
 
@@ -331,6 +338,10 @@ def build_deep_verification_agent(
             "assumption_researcher",
             lambda state: _parallel_assumption_research_node(state),
         )
+        graph.add_node(
+            "assumption_impact_classifier",
+            lambda state: classify_assumption_impact_node(state, llm),
+        )
     else:
         graph.add_node(
             "assumption_researcher",
@@ -362,7 +373,8 @@ def build_deep_verification_agent(
     graph.add_edge("assumption_decomposer", "assumption_researcher")
 
     # Both parallel nodes feed into sync node, then to verification
-    graph.add_edge("assumption_researcher", "sync_parallel_results")
+    graph.add_edge("assumption_researcher", "assumption_impact_classifier")
+    graph.add_edge("assumption_impact_classifier", "sync_parallel_results")
     graph.add_edge("hypothesis_simulation", "sync_parallel_results")
     graph.add_edge("sync_parallel_results", "deep_verification")
 
@@ -475,6 +487,22 @@ def _sequential_assumption_research_node(
         assumption_research_results[assumption] = result
 
     return {"_assumption_research_results": assumption_research_results}
+
+
+def classify_assumption_impact_node(
+    state: ReflectionState, llm: BaseChatModel
+) -> ReflectionState:
+    prompt = load_prompt(
+        "assumption_impact_classification",
+        hypothesis=state["hypothesis_to_review"].hypothesis,
+        assumptions=json.dumps(state["_parsed_assumptions"]),
+        research_results=json.dumps(state["_assumption_research_results"]),
+    )
+    response = llm.invoke(prompt)
+
+    return {
+        "_assumption_impact_classification": response.content
+    }
 
 
 def reflection_review_node(state: ReflectionState, llm: BaseChatModel) -> ReflectionState:
