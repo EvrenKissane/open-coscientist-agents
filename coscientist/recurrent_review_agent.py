@@ -21,6 +21,11 @@ from coscientist.reflection_agent_steps import (
     assumption_research_node,
 )
 from typing import List, Dict, Any
+from enum import Enum
+from functools import partial
+
+
+
 
 
 
@@ -43,7 +48,7 @@ def save_review_result(reviewed: ReviewedHypothesis) -> None:
     """Append a reviewed hypothesis to storage."""
     _ensure_data_dir()
     with open(REVIEWS_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(reviewed, default=lambda o: o.__dict__) + "\n")
+        f.write(json.dumps(reviewed, default=lambda o: o.value if isinstance(o, Enum) else o.__dict__) + "\n")
 
 
 def load_all_reviews() -> List[ReviewedHypothesis]:
@@ -68,7 +73,7 @@ def save_tournament_result(result: RankingMatchResult) -> None:
     """Append a tournament result from the Ranking agent."""
     _ensure_data_dir()
     with open(TOURNAMENT_PATH, "a", encoding="utf-8") as f:
-        f.write(json.dumps(result, default=lambda o: o.__dict__) + "\n")
+        f.write(json.dumps(result, default=lambda o: o.value if isinstance(o, Enum) else o.__dict__) + "\n")
 
 
 def load_all_tournament_results() -> List[RankingMatchResult]:
@@ -147,6 +152,18 @@ class ReflectionState(TypedDict):
     _parsed_assumptions: dict[str, list[str]]
     _assumption_research_results: dict[str, str]
     reviewed_hypothesis: Optional[ReviewedHypothesis]
+    _review_improvement_rules: Optional[str]
+
+
+def safe_truncate_json(obj, limit=6000):
+    s = json.dumps(obj)
+    if len(s) <= limit:
+        return s
+    # truncate at a comma boundary
+    cut = s.rfind("},", 0, limit)
+    if cut == -1:
+        return "[]"
+    return s[:cut+1] + "]"
 
 def recurrent_review_node(state: ReflectionState, llm: BaseChatModel) -> ReflectionState:
     """
@@ -164,18 +181,19 @@ def recurrent_review_node(state: ReflectionState, llm: BaseChatModel) -> Reflect
     # 3. Build recurrent review prompt
     prompt = load_prompt(
         "recurrent_review",
-        past_reviews=json.dumps(past_reviews_summary)[:6000],
-        tournament_results=json.dumps(tournament_summary)[:6000],
+        past_reviews=safe_truncate_json(past_reviews_summary)[:6000],
+        tournament_results=safe_truncate_json(tournament_summary)[:6000],
     )
 
     # 4. Call LLM to infer improvement rules
-    response = llm.invoke(prompt)
+    response = llm.invoke([{"role": "user", "content": prompt}])
 
     # 5. Merge into state as persistent “knowledge”
     return {
         **state,
         "_review_improvement_rules": response.content,
     }
+
 
 
 

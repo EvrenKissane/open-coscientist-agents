@@ -499,6 +499,8 @@ def reflection_review_node(state: ReflectionState, llm: BaseChatModel) -> Reflec
     }
 
 
+from functools import partial
+
 def build_reflection_graph(llm: BaseChatModel, checkpointer: BaseCheckpointSaver):
     workflow = StateGraph(ReflectionState)
 
@@ -506,7 +508,12 @@ def build_reflection_graph(llm: BaseChatModel, checkpointer: BaseCheckpointSaver
     workflow.add_node("assumption_refinement", assumption_refinement_node)
     workflow.add_node("assumption_research", assumption_research_node)
 
-    workflow.add_node("recurrent_review", recurrent_review_node)
+    # FIX: bind llm into the node
+    workflow.add_node(
+        "recurrent_review",
+        partial(recurrent_review_node, llm=llm)
+    )
+
     workflow.add_node("reflection_review", reflection_review_node)
 
     workflow.add_edge("initial_filter", "assumption_refinement")
@@ -517,4 +524,5 @@ def build_reflection_graph(llm: BaseChatModel, checkpointer: BaseCheckpointSaver
     workflow.add_edge("reflection_review", END)
 
     return workflow.compile(checkpointer=checkpointer)
+
 
