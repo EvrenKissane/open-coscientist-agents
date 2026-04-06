@@ -480,6 +480,22 @@ def _sequential_assumption_research_node(
     return {"_assumption_research_results": assumption_research_results}
 
 
+def classify_assumption_impact_node(
+    state: ReflectionState, llm: BaseChatModel
+) -> ReflectionState:
+    prompt = load_prompt(
+        "assumption_impact_classification",
+        hypothesis=state["hypothesis_to_review"].hypothesis,
+        assumptions=json.dumps(state["_parsed_assumptions"]),
+        research_results=json.dumps(state["_assumption_research_results"]),
+    )
+    response = llm.invoke(prompt)
+
+    return {
+        "_assumption_impact_classification": response.content
+    }
+
+
 def reflection_review_node(state: ReflectionState, llm: BaseChatModel) -> ReflectionState:
     improvement_rules = state.get("_review_improvement_rules", "")
 
