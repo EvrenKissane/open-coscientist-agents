@@ -57,6 +57,8 @@ class ReflectionState(TypedDict):
         Dictionary of parsed assumptions and sub-assumptions (private)
     _assumption_research_results: dict[str, str]
         Research results for each assumption (private)
+    _assumption_impact_classification: str
+        Classification of fundamental or non-fundamental impact on hypothesis validity (private)
     reviewed_hypothesis: Optional[ReviewedHypothesis]
         The final reviewed hypothesis with all verification results
     """
@@ -69,6 +71,7 @@ class ReflectionState(TypedDict):
     _refined_assumptions: str
     _parsed_assumptions: dict[str, list[str]]
     _assumption_research_results: dict[str, str]
+    _assumption_impact_classification: str
     reviewed_hypothesis: Optional[ReviewedHypothesis]
 
 
