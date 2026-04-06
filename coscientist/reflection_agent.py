@@ -369,7 +369,8 @@ def build_deep_verification_agent(
     graph.add_edge("assumption_decomposer", "assumption_researcher")
 
     # Both parallel nodes feed into sync node, then to verification
-    graph.add_edge("assumption_researcher", "sync_parallel_results")
+    graph.add_edge("assumption_researcher", "assumption_impact_classifier")
+    graph.add_edge("assumption_impact_classifier", "sync_parallel_results")
     graph.add_edge("hypothesis_simulation", "sync_parallel_results")
     graph.add_edge("sync_parallel_results", "deep_verification")
 
