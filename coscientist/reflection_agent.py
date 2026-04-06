@@ -243,6 +243,9 @@ def deep_verification_node(
         "_assumption_research_results" in state
     ), f"Missing '_assumption_research_results'. Available keys: {available_keys}"
     assert (
+        "_assumption_impact_classification" in state
+    ), f"Missing '_assumption_impact_classification'. Available keys: {available_keys}"
+    assert (
         "_causal_reasoning" in state
     ), f"Missing '_causal_reasoning'. Available keys: {available_keys}"
 
