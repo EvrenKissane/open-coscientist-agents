@@ -24,7 +24,7 @@ from coscientist.generation_agent import (
 )
 from coscientist.global_state import CoscientistStateManager
 from coscientist.literature_review_agent import build_literature_review_agent
-from coscientist.meta_review_agent import build_meta_review_agent
+from coscientist.meta_review_agent import build_meta_review_agent, build_top_hypotheses_review_agent
 from coscientist.reasoning_types import ReasoningType
 from coscientist.reflection_agent import build_deep_verification_agent
 from coscientist.supervisor_agent import build_supervisor_agent
@@ -419,6 +419,18 @@ class CoscientistFramework:
         meta_review_agent = build_meta_review_agent(self.config.meta_review_agent_llm)
         final_meta_review_state = meta_review_agent.invoke(initial_meta_review_state)
         self.state_manager.update_meta_review(final_meta_review_state)
+
+        # Generate research overview from top hypotheses and store for use by generation agent
+        research_overview_agent = build_top_hypotheses_review_agent(
+            self.config.meta_review_agent_llm
+        )
+        initial_research_overview_state = self.state_manager.next_meta_review_state(
+            top_k=k_bracket
+        )
+        final_research_overview_state = research_overview_agent.invoke(
+            initial_research_overview_state
+        )
+        self.state_manager.update_research_overview(final_research_overview_state)
 
     async def finish(self) -> None:
         initial_final_report_state = self.state_manager.next_final_report_state(top_k=3)

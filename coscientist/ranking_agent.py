@@ -20,14 +20,16 @@ queue.
 """
 
 import itertools  # Add itertools for combinations
+import random
 import statistics
-from typing import Optional  # Add Optional
+from typing import Optional
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from coscientist import multiturn
 from coscientist.common import load_prompt
 from coscientist.custom_types import RankingMatchResult, ReviewedHypothesis
+from coscientist.proximity_agent import ProximityGraph
 from coscientist.recurrent_review_agent import save_tournament_result
 
 
@@ -118,14 +120,54 @@ def update_elo(rating1: float, rating2: float, winner: int) -> tuple[float, floa
 class EloTournament:
     """Manages a two-stage ELO ranking tournament for hypotheses."""
 
-    def __init__(self, goal: str):
+    def __init__(self, goal: str, proximity_graph=None):
         self.goal = goal
+        self.proximity_graph = proximity_graph or ProximityGraph()
         self.hypotheses: dict[str, ReviewedHypothesis] = {}  # id -> Hypothesis object
         self.ratings: dict[str, float] = {}  # id -> ELO rating
         self.match_history: dict[tuple[int, int, int], RankingMatchResult] = {}
 
         self._past_tournament_ratings: list[list[float]] = []
 
+        self.hypothesis_age = {}
+        self.current_step = 0
+
+    def get_proximity_priority_pairs(self, community_ids: list[str]) -> list[tuple[str, str]]:
+        """
+        Returns hypothesis ID pairs sorted by similarity (descending),
+        so similar hypotheses are matched first.
+        """
+        edges = []
+        for i, id1 in enumerate(community_ids):
+            for id2 in community_ids[i+1:]:
+                weight = self.proximity_graph.get_similarity(id1, id2)
+                edges.append((id1, id2, weight))
+        edges.sort(key=lambda x: x[2], reverse=True)
+        return [(id1, id2) for id1, id2, _ in edges]
+
+
+    def get_priority_queue(self) -> list[str]:
+        return sorted(
+            self.hypotheses.keys(),
+            key=lambda h_id: (
+                self.ratings[h_id],           # high Elo first
+                -self.hypothesis_age[h_id]    # newer first
+            ),
+            reverse=True
+        )
+
+
+    def _determine_debate_type(self, id1: str, id2: str) -> str:
+        """
+        Decide whether to run a multi-turn debate or single-turn
+        """
+        top_threshold = 3  # example: top 3 hypotheses get multi-turn
+        sorted_ids = [h_id for h_id, _ in self.get_sorted_hypotheses()]
+        if id1 in sorted_ids[:top_threshold] and id2 in sorted_ids[:top_threshold]:
+            return "simulated_debate"
+        else:
+            return "tournament"
+    
     def add_hypothesis(
         self, hypothesis: ReviewedHypothesis, initial_rating: float = DEFAULT_ELO
     ):
@@ -133,6 +175,9 @@ class EloTournament:
         if hypothesis.uid not in self.hypotheses:
             self.hypotheses[hypothesis.uid] = hypothesis
             self.ratings[hypothesis.uid] = initial_rating
+            self.proximity_graph.add_hypothesis(hypothesis)
+            self.hypothesis_age[hypothesis.uid] = self.current_step
+            self.current_step += 1
         else:
             raise ValueError(f"Hypothesis {hypothesis.uid} already exists.")
 
@@ -205,31 +250,92 @@ class EloTournament:
 
         return winner, response_text
 
-    def run_round_robin_stage(self, llm: BaseChatModel):
+    def run_similarity_guided_stage(self, llm: BaseChatModel):
+        """"
+        Runs a similarity-guided tournament stage.
+
+        - Uses proximity graph to match similar hypotheses
+        - Prioritizes high-ranking and newer hypotheses
+        - Limits matches per round for efficiency
         """
-        Runs the round-robin stage of the tournament.
-        Every hypothesis competes against every other hypothesis once using TOURNAMENT_PROMPT.
-        Updates ELO ratings based on match outcomes.
-        """
+
         hypo_ids = list(self.hypotheses.keys())
         stage = 1
         if len(hypo_ids) < 2:
             print("Not enough hypotheses for round robin stage.")
             return
 
-        # Use itertools.combinations to get unique pairs
-        for id1, id2 in list(itertools.combinations(hypo_ids, 2)):
-            hypo1 = self.hypotheses[id1]
-            hypo2 = self.hypotheses[id2]
-            rating1 = self.ratings[id1]
-            rating2 = self.ratings[id2]
+        self.proximity_graph.update_edges()
 
-            pair = tuple(sorted((id1, id2))) + (stage,)
-            previous_outcome = self.match_history.get(pair, None)
-            if previous_outcome is None:
-                # If no history, run the match
-                winner, debate = self._determine_winner(hypo1, hypo2, "tournament", llm)
-    
+        if self.proximity_graph is not None:
+            communities = self.proximity_graph.get_semantic_communities(min_weight=0.5)
+        else:
+            communities = [list(self.hypotheses.keys())]
+        
+        if not communities:
+            communities = [list(self.hypotheses.keys())]
+
+        for community in communities:
+            community_ids = list(community)
+
+            if len(community_ids) < 2:
+                continue
+            
+            priority_queue = self.get_priority_queue()
+
+            community_queue = [
+                h_id for h_id in priority_queue
+                if h_id in community_ids
+            ]
+
+            # Step 1: get similarity-ranked pairs
+            pairs = self.get_proximity_priority_pairs(community_queue)
+
+            # Step 2: prioritize top hypotheses
+            top_n = 5
+            top_ids = set(self.get_priority_queue()[:top_n])
+
+            priority_pairs = [
+                (id1, id2)
+                for id1, id2 in pairs
+                if id1 in top_ids or id2 in top_ids
+            ]
+
+            # Step 3: combine (priority first)
+            pairs = priority_pairs + pairs
+
+            # Step 4: remove duplicates while preserving order
+            seen = set()
+            unique_pairs = []
+            for p in pairs:
+                key = tuple(sorted(p))
+                if key not in seen:
+                    seen.add(key)
+                    unique_pairs.append(p)
+
+            pairs = unique_pairs
+
+            # Step 5: keep only top similar ones
+            top_k = 20
+            pairs = pairs[:top_k]
+
+            # Step 6: limit matches
+            max_matches_per_round = 10
+            pairs = pairs[:max_matches_per_round]
+
+            for id1, id2 in pairs:
+                pair = tuple(sorted((id1, id2))) + (1,)
+                if pair in self.match_history:
+                    continue
+
+                hypo1, hypo2 = self.hypotheses[id1], self.hypotheses[id2]
+
+                prompt_type = self._determine_debate_type(id1, id2)
+
+                winner, debate = self._determine_winner(
+                    hypo1, hypo2, prompt_type, llm
+                )
+
                 self.match_history[pair] = RankingMatchResult(
                     uid1=id1, uid2=id2, winner=winner, debate=debate
                 )
@@ -237,6 +343,10 @@ class EloTournament:
 
                 new_rating1, new_rating2 = update_elo(rating1, rating2, winner)
 
+                new_rating1, new_rating2 = update_elo(
+                    self.ratings[id1], self.ratings[id2], winner
+                )
+                print(f"[MATCH] {id1} vs {id2} | type={prompt_type} | winner={winner}")
                 self.ratings[id1] = new_rating1
                 self.ratings[id2] = new_rating2
 
@@ -244,7 +354,6 @@ class EloTournament:
         """
         Runs the single-elimination bracket stage for the top k hypotheses.
         Uses SIMULATED_DEBATE_PROMPT for matches.
-        Does NOT update ELO ratings, only determines a winner.
 
         Parameters
         ----------
@@ -327,9 +436,12 @@ class EloTournament:
         Optional[str]
             The ID of the final winning hypothesis from the bracket stage, or None.
         """
-        self.run_round_robin_stage(llm)
+        self.run_similarity_guided_stage(llm)
         self.run_bracket_stage(llm, k=k_bracket)
         self._past_tournament_ratings.append(list(self.ratings.values()))
+        if not self.ratings:
+            return None
+        return self.get_sorted_hypotheses()[0][0]
 
     def get_win_loss_records(self) -> dict[str, dict[str, int]]:
         """

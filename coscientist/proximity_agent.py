@@ -88,6 +88,12 @@ class ProximityGraph:
         # Prune edges from the graph with weight less than min_weight
         pruned_graph = self.get_pruned_graph(min_weight)
         return nx.community.louvain_communities(pruned_graph, resolution=resolution)
+    
+    def get_similarity(self, id1: str, id2: str) -> float:
+        try:
+            return self.graph[id1][id2]["weight"]
+        except KeyError:
+            return 0.0
 
     @property
     def average_cosine_similarity(self) -> float:

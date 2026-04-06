@@ -25,7 +25,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import END, StateGraph
 
 from coscientist.common import load_prompt
-from coscientist.custom_types import ReviewedHypothesis
+from coscientist.custom_types import ResearchContact, ReviewedHypothesis
 from coscientist.ranking_agent import EloTournament
 
 
@@ -38,6 +38,7 @@ class MetaReviewTournamentState(TypedDict):
     tournament: EloTournament
     top_k: int
     result: str
+    research_contacts: list[ResearchContact]
 
 
 def build_meta_review_agent(llm: BaseChatModel) -> StateGraph:
@@ -144,6 +145,59 @@ def _meta_review_node(
     return {**state, "result": response_content}
 
 
+def build_research_contacts_agent(llm: BaseChatModel) -> StateGraph:
+    """
+    Builds and configures a LangGraph for research contacts identification.
+
+    Parameters
+    ----------
+    llm : BaseChatModel
+        The language model to use for research contacts generation.
+
+    Returns
+    -------
+    StateGraph
+        A compiled LangGraph for the research contacts agent.
+    """
+    graph = StateGraph(MetaReviewTournamentState)
+
+    graph.add_node(
+        "research_contacts",
+        lambda state: _research_contacts_node(state, llm),
+    )
+
+    graph.add_edge("research_contacts", END)
+    graph.set_entry_point("research_contacts")
+    return graph.compile()
+
+
+def _research_contacts_node(
+    state: MetaReviewTournamentState,
+    llm: BaseChatModel,
+) -> MetaReviewTournamentState:
+    """
+    Research contacts node that identifies qualified domain experts for hypothesis review.
+    """
+    tournament = state["tournament"]
+    top_k = state.get("top_k", 5)
+
+    top_hypotheses_data = _get_top_hypotheses_data(tournament, top_k)
+
+    top_hypotheses_entries = []
+    for hyp_id, rating in top_hypotheses_data:
+        hypothesis = tournament.hypotheses[hyp_id]
+        top_hypotheses_entries.append(_format_hypothesis_with_rating(hypothesis, rating))
+    top_hypotheses_text = "\n".join(top_hypotheses_entries)
+
+    prompt = load_prompt(
+        "research_contacts",
+        goal=state["goal"],
+        top_hypotheses=top_hypotheses_text,
+    )
+    response_content = llm.invoke(prompt).content
+    return {**state, "result": response_content, "research_contacts": []}
+
+
 def _top_hypotheses_review_node(
     state: MetaReviewTournamentState,
     llm: BaseChatModel,
@@ -162,7 +216,7 @@ def _top_hypotheses_review_node(
     for hyp_id, rating in top_hypotheses_data:
         hypothesis = tournament.hypotheses[hyp_id]
         top_hypotheses_entries.append(
-            _format_hypothesis_with_rating(hyp_id, hypothesis, rating)
+            _format_hypothesis_with_rating(hypothesis, rating)
         )
     top_hypotheses_text = "\n".join(top_hypotheses_entries)
 

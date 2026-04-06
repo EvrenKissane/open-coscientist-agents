@@ -33,6 +33,19 @@ class ReviewedHypothesis(ParsedHypothesis):
     verification_result: str = Field(
         description="The result of the deep verification process"
     )
+    review: str = Field(
+        default="",
+        description="The final synthesized review of the hypothesis, summarizing causal reasoning, assumption research, and verification",
+    )
+
+
+class ResearchContact(BaseModel):
+    """A suggested domain expert for hypothesis review or collaboration."""
+
+    name: str = Field(description="Name of the suggested expert (may be redacted)")
+    affiliation: str = Field(description="Institution or organization of the expert")
+    expertise: str = Field(description="Relevant domain expertise")
+    reasoning: str = Field(description="Why this expert is relevant to the research goal")
 
 
 class RankingMatchResult(BaseModel):

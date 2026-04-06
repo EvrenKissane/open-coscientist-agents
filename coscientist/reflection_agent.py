@@ -62,6 +62,7 @@ class ReflectionState(TypedDict):
     """
 
     hypothesis_to_review: ParsedHypothesis
+    meta_review: str
     initial_filter_assessment: str
     passed_initial_filter: bool
     _causal_reasoning: str
@@ -138,8 +139,11 @@ def desk_reject_node(state: ReflectionState, llm: BaseChatModel) -> ReflectionSt
     ReflectionState
         Updated state with the passed_initial_filter field updated
     """
+    meta_review = state.get("meta_review", "")
     prompt = load_prompt(
-        "desk_reject", hypothesis=state["hypothesis_to_review"].hypothesis
+        "desk_reject",
+        hypothesis=state["hypothesis_to_review"].hypothesis,
+        meta_review=meta_review,
     )
     response = llm.invoke(prompt)
     passed = "pass" in response.content.split("FINAL EVALUATION:")[-1].lower()
@@ -260,6 +264,7 @@ def deep_verification_node(
         causal_reasoning=state["_causal_reasoning"],
         assumption_research_results=state["_assumption_research_results"],
         verification_result=response.content,
+        review=response.content,
     )
 
     return {
