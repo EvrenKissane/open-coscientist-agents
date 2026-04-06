@@ -31,8 +31,10 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, StateGraph
 
+
 from coscientist.common import load_prompt
 from coscientist.custom_types import ParsedHypothesis, ReviewedHypothesis
+from coscientist.recurrent_review_agent import recurrent_review_node
 
 
 class ReflectionState(TypedDict):
@@ -468,3 +470,46 @@ def _sequential_assumption_research_node(
         assumption_research_results[assumption] = result
 
     return {"_assumption_research_results": assumption_research_results}
+
+
+def reflection_review_node(state: ReflectionState, llm: BaseChatModel) -> ReflectionState:
+    improvement_rules = state.get("_review_improvement_rules", "")
+
+    prompt = load_prompt(
+        "reflection_review",
+        hypothesis=state["hypothesis_to_review"].text,
+        assumptions=state["_refined_assumptions"],
+        research_results=json.dumps(state["_assumption_research_results"]),
+        improvement_rules=improvement_rules,   # ← inject here
+    )
+
+    response = llm.invoke(prompt)
+    reviewed = ReviewedHypothesis.from_llm(response)
+
+    save_review_result(reviewed)
+
+    return {
+        **state,
+        "reviewed_hypothesis": reviewed,
+    }
+
+
+def build_reflection_graph(llm: BaseChatModel, checkpointer: BaseCheckpointSaver):
+    workflow = StateGraph(ReflectionState)
+
+    workflow.add_node("initial_filter", initial_filter_node)
+    workflow.add_node("assumption_refinement", assumption_refinement_node)
+    workflow.add_node("assumption_research", assumption_research_node)
+
+    workflow.add_node("recurrent_review", recurrent_review_node)
+    workflow.add_node("reflection_review", reflection_review_node)
+
+    workflow.add_edge("initial_filter", "assumption_refinement")
+    workflow.add_edge("assumption_refinement", "assumption_research")
+
+    workflow.add_edge("assumption_research", "recurrent_review")
+    workflow.add_edge("recurrent_review", "reflection_review")
+    workflow.add_edge("reflection_review", END)
+
+    return workflow.compile(checkpointer=checkpointer)
+

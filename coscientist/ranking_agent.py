@@ -28,6 +28,8 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from coscientist import multiturn
 from coscientist.common import load_prompt
 from coscientist.custom_types import RankingMatchResult, ReviewedHypothesis
+from coscientist.recurrent_review_agent import save_tournament_result
+
 
 # Constants
 DEFAULT_ELO = 1200
@@ -227,10 +229,12 @@ class EloTournament:
             if previous_outcome is None:
                 # If no history, run the match
                 winner, debate = self._determine_winner(hypo1, hypo2, "tournament", llm)
-
+    
                 self.match_history[pair] = RankingMatchResult(
                     uid1=id1, uid2=id2, winner=winner, debate=debate
                 )
+                save_tournament_result(self.match_history[pair])
+
                 new_rating1, new_rating2 = update_elo(rating1, rating2, winner)
 
                 self.ratings[id1] = new_rating1
@@ -294,6 +298,7 @@ class EloTournament:
                     self.match_history[pair] = RankingMatchResult(
                         uid1=id1, uid2=id2, winner=winner, debate=debate
                     )
+                    save_tournament_result(self.match_history[pair])
                     new_rating1, new_rating2 = update_elo(rating1, rating2, winner)
                     self.ratings[id1] = new_rating1
                     self.ratings[id2] = new_rating2
