@@ -334,6 +334,10 @@ def build_deep_verification_agent(
             "assumption_researcher",
             lambda state: _parallel_assumption_research_node(state),
         )
+        graph.add_node(
+            "assumption_impact_classifier",
+            lambda state: classify_assumption_impact_node(state, llm),
+        )
     else:
         graph.add_node(
             "assumption_researcher",
