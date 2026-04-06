@@ -257,6 +257,7 @@ def deep_verification_node(
         hypothesis=state["hypothesis_to_review"].hypothesis,
         reasoning=state["_causal_reasoning"],
         assumption_research=assumption_research,
+        assumption_impact=state["_assumption_impact_classification"],
     )
     response = llm.invoke(prompt)
 
